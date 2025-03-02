@@ -1,84 +1,75 @@
-import serial
 import time
+import serial
+import adafruit_fingerprint
 
-# تنظیمات پورت سریال
-ser = serial.Serial("/dev/serial0", baudrate=57600, timeout=1)
+# تنظیمات ارتباط سریال با سنسور اثر انگشت
+uart = serial.Serial("/dev/serial0", baudrate=57600, timeout=1)
+finger = adafruit_fingerprint.Adafruit_Fingerprint(uart)
 
-def send_command(command):
-    """ارسال فرمان به سنسور و دریافت پاسخ"""
-    ser.write(command)
-    time.sleep(0.5)
-    response = ser.read(12)  # دریافت پاسخ 12 بایتی
-    return response
+def get_fingerprint():
+    """ شناسایی اثر انگشت """
+    print("لطفاً انگشت خود را روی سنسور قرار دهید...")
+
+    while finger.get_image() != adafruit_fingerprint.OK:
+        pass  # صبر می‌کنیم تا انگشت روی سنسور قرار بگیرد
+
+    if finger.image_2_tz(1) != adafruit_fingerprint.OK:
+        print("خطا در پردازش تصویر!")
+        return False
+
+    if finger.finger_search() != adafruit_fingerprint.OK:
+        print("اثر انگشت شناسایی نشد.")
+        return False
+
+    print(f"اثر انگشت شناسایی شد! ID: {finger.finger_id}")
+    return True
 
 def enroll_fingerprint():
-    """ثبت اثر انگشت جدید"""
-    print("لطفاً انگشت خود را روی سنسور قرار دهید...")
-
-    # فرمان گرفتن تصویر اثر انگشت
-    command = b'\xEF\x01\xFF\xFF\xFF\xFF\x01\x00\x03\x01\x00\x05'
-    response = send_command(command)
-
-    if response and response[9] == 0x00:
-        print("انگشت اسکن شد، لطفاً دوباره قرار دهید.")
-        time.sleep(1)
-
-        # مرحله دوم اسکن
-        command = b'\xEF\x01\xFF\xFF\xFF\xFF\x01\x00\x03\x02\x00\x06'
-        response = send_command(command)
-
-        if response and response[9] == 0x00:
-            print("اثر انگشت تأیید شد! در حال ذخیره...")
-            
-            # ذخیره اثر انگشت با ID=1
-            command = b'\xEF\x01\xFF\xFF\xFF\xFF\x01\x00\x06\x06\x01\x00\x01\x00\x0F'
-            response = send_command(command)
-
-            if response and response[9] == 0x00:
-                print("اثر انگشت با موفقیت ذخیره شد!")
-            else:
-                print("خطا در ذخیره اثر انگشت!")
-        else:
-            print("اثر انگشت تطبیق ندارد، دوباره امتحان کنید.")
+    """ ثبت اثر انگشت جدید """
+    print("ثبت اثر انگشت جدید...")
+    for finger_id in range(1, 127):  # جستجو برای اولین ID خالی
+        if not finger.load_model(finger_id):
+            break
     else:
-        print("اسکن اثر انگشت ناموفق بود!")
+        print("حافظه سنسور پر است!")
+        return False
 
-def search_fingerprint():
-    """جستجوی اثر انگشت"""
-    print("لطفاً انگشت خود را روی سنسور قرار دهید...")
+    print(f"ثبت اثر انگشت در ID: {finger_id}")
+    for i in range(1, 3):  # دو بار اسکن برای ثبت اثر انگشت
+        print(f"لطفاً انگشت خود را ({i}/2) روی سنسور قرار دهید...")
+        while finger.get_image() != adafruit_fingerprint.OK:
+            pass
+        if finger.image_2_tz(i) != adafruit_fingerprint.OK:
+            print("خطا در پردازش تصویر!")
+            return False
+        if i == 1:
+            print("انگشت خود را بردارید و دوباره قرار دهید...")
+            time.sleep(2)
 
-    # فرمان اسکن اثر انگشت
-    command = b'\xEF\x01\xFF\xFF\xFF\xFF\x01\x00\x03\x01\x00\x05'
-    response = send_command(command)
+    if finger.create_model() != adafruit_fingerprint.OK:
+        print("خطا در ترکیب داده‌های اثر انگشت!")
+        return False
 
-    if response and response[9] == 0x00:
-        print("اثر انگشت اسکن شد، در حال بررسی...")
+    if finger.store_model(finger_id) != adafruit_fingerprint.OK:
+        print("خطا در ذخیره‌سازی اثر انگشت!")
+        return False
 
-        # جستجو در پایگاه داده
-        command = b'\xEF\x01\xFF\xFF\xFF\xFF\x01\x00\x08\x04\x00\x00\x00\x64\x00\x71'
-        response = send_command(command)
-
-        if response and response[9] == 0x00:
-            fingerprint_id = response[10]
-            print(f"اثر انگشت شناخته شد! شماره ID: {fingerprint_id}")
-        else:
-            print("اثر انگشت ثبت نشده است.")
-    else:
-        print("خطا در اسکن اثر انگشت!")
+    print(f"اثر انگشت با موفقیت ثبت شد! ID: {finger_id}")
+    return True
 
 # اجرای برنامه
 while True:
-    print("\n1: ثبت اثر انگشت جدید")
-    print("2: جستجوی اثر انگشت")
+    print("\n1: ثبت اثر انگشت")
+    print("2: شناسایی اثر انگشت")
     print("3: خروج")
-    choice = input("انتخاب کنید: ")
 
+    choice = input("انتخاب کنید: ")
+    
     if choice == "1":
         enroll_fingerprint()
     elif choice == "2":
-        search_fingerprint()
+        get_fingerprint()
     elif choice == "3":
-        print("خروج از برنامه...")
         break
     else:
-        print("گزینه نامعتبر!")
+        print("انتخاب نامعتبر! دوباره امتحان کنید.")
