@@ -156,4 +156,19 @@ while True:
     print("Fingerprint templates:", finger.templates)
     print("e) enroll print")
     print("f) find print")
-    print("d) delete
+    print("d) delete print")
+    print("----------------")
+    c = input("> ")
+
+    if c == "e":
+        enroll_finger(get_num())
+    if c == "f":
+        if get_fingerprint():
+            print("Detected #", finger.finger_id, "with confidence", finger.confidence)
+        else:
+            print("Finger not found")
+    if c == "d":
+        if finger.delete_model(get_num()) == adafruit_fingerprint.OK:
+            print("Deleted!")
+        else:
+            print("Failed to delete")
