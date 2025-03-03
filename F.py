@@ -2,28 +2,15 @@
 # SPDX-License-Identifier: MIT
 
 import time
-#import board
-import busio
-from digitalio import DigitalInOut, Direction
+import board
 import adafruit_fingerprint
-
-led = DigitalInOut(board.D13)
-led.direction = Direction.OUTPUT
-
-uart = busio.UART(board.TX, board.RX, baudrate=57600)
-
-# If using with a computer such as Linux/RaspberryPi, Mac, Windows with USB/serial converter:
-# import serial
-# uart = serial.Serial("/dev/ttyUSB0", baudrate=57600, timeout=1)
-
-# If using with Linux/Raspberry Pi and hardware UART:
 import serial
+
 uart = serial.Serial("/dev/ttyS0", baudrate=57600, timeout=1)
 
 finger = adafruit_fingerprint.Adafruit_Fingerprint(uart)
 
 ##################################################
-
 
 def get_fingerprint():
     """Get a finger print image, template it, and see if it matches!"""
@@ -38,8 +25,6 @@ def get_fingerprint():
         return False
     return True
 
-
-# pylint: disable=too-many-branches
 def get_fingerprint_detail():
     """Get a finger print image, template it, and see if it matches!
     This time, print out each error instead of just returning on failure"""
@@ -73,8 +58,6 @@ def get_fingerprint_detail():
 
     print("Searching...", end="")
     i = finger.finger_fast_search()
-    # pylint: disable=no-else-return
-    # This block needs to be refactored when it can be tested.
     if i == adafruit_fingerprint.OK:
         print("Found fingerprint!")
         return True
@@ -85,8 +68,6 @@ def get_fingerprint_detail():
             print("Other error")
         return False
 
-
-# pylint: disable=too-many-statements
 def enroll_finger(location):
     """Take a 2 finger images and template it, then store in 'location'"""
     for fingerimg in range(1, 3):
@@ -156,9 +137,7 @@ def enroll_finger(location):
 
     return True
 
-
 ##################################################
-
 
 def get_num():
     """Use input() to get a valid number from 1 to 127. Retry till success!"""
@@ -170,7 +149,6 @@ def get_num():
             pass
     return i
 
-
 while True:
     print("----------------")
     if finger.read_templates() != adafruit_fingerprint.OK:
@@ -178,20 +156,4 @@ while True:
     print("Fingerprint templates:", finger.templates)
     print("e) enroll print")
     print("f) find print")
-    print("d) delete print")
-    print("----------------")
-    c = input("> ")
-
-    if c == "e":
-        enroll_finger(get_num())
-    if c == "f":
-        if get_fingerprint():
-            print("Detected #", finger.finger_id, "with confidence", finger.confidence)
-        else:
-            print("Finger not found")
-    if c == "d":
-        if finger.delete_model(get_num()) == adafruit_fingerprint.OK:
-            print("Deleted!")
-        else:
-            print("Failed to delete")
-    
+    print("d) delete
