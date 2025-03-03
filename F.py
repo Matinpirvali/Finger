@@ -1,75 +1,197 @@
+# SPDX-FileCopyrightText: 2021 ladyada for Adafruit Industries
+# SPDX-License-Identifier: MIT
+
 import time
-import serial
+#import board
+import busio
+from digitalio import DigitalInOut, Direction
 import adafruit_fingerprint
 
-# تنظیمات ارتباط سریال با سنسور اثر انگشت
-uart = serial.Serial("/dev/serial0", baudrate=57600, timeout=1)
+led = DigitalInOut(board.D13)
+led.direction = Direction.OUTPUT
+
+uart = busio.UART(board.TX, board.RX, baudrate=57600)
+
+# If using with a computer such as Linux/RaspberryPi, Mac, Windows with USB/serial converter:
+# import serial
+# uart = serial.Serial("/dev/ttyUSB0", baudrate=57600, timeout=1)
+
+# If using with Linux/Raspberry Pi and hardware UART:
+import serial
+uart = serial.Serial("/dev/ttyS0", baudrate=57600, timeout=1)
+
 finger = adafruit_fingerprint.Adafruit_Fingerprint(uart)
 
+##################################################
+
+
 def get_fingerprint():
-    """ شناسایی اثر انگشت """
-    print("لطفاً انگشت خود را روی سنسور قرار دهید...")
-
+    """Get a finger print image, template it, and see if it matches!"""
+    print("Waiting for image...")
     while finger.get_image() != adafruit_fingerprint.OK:
-        pass  # صبر می‌کنیم تا انگشت روی سنسور قرار بگیرد
-
+        pass
+    print("Templating...")
     if finger.image_2_tz(1) != adafruit_fingerprint.OK:
-        print("خطا در پردازش تصویر!")
         return False
-
+    print("Searching...")
     if finger.finger_search() != adafruit_fingerprint.OK:
-        print("اثر انگشت شناسایی نشد.")
         return False
-
-    print(f"اثر انگشت شناسایی شد! ID: {finger.finger_id}")
     return True
 
-def enroll_fingerprint():
-    """ ثبت اثر انگشت جدید """
-    print("ثبت اثر انگشت جدید...")
-    for finger_id in range(1, 127):  # جستجو برای اولین ID خالی
-        if not finger.load_model(finger_id):
-            break
+
+# pylint: disable=too-many-branches
+def get_fingerprint_detail():
+    """Get a finger print image, template it, and see if it matches!
+    This time, print out each error instead of just returning on failure"""
+    print("Getting image...", end="")
+    i = finger.get_image()
+    if i == adafruit_fingerprint.OK:
+        print("Image taken")
     else:
-        print("حافظه سنسور پر است!")
+        if i == adafruit_fingerprint.NOFINGER:
+            print("No finger detected")
+        elif i == adafruit_fingerprint.IMAGEFAIL:
+            print("Imaging error")
+        else:
+            print("Other error")
         return False
 
-    print(f"ثبت اثر انگشت در ID: {finger_id}")
-    for i in range(1, 3):  # دو بار اسکن برای ثبت اثر انگشت
-        print(f"لطفاً انگشت خود را ({i}/2) روی سنسور قرار دهید...")
-        while finger.get_image() != adafruit_fingerprint.OK:
-            pass
-        if finger.image_2_tz(i) != adafruit_fingerprint.OK:
-            print("خطا در پردازش تصویر!")
+    print("Templating...", end="")
+    i = finger.image_2_tz(1)
+    if i == adafruit_fingerprint.OK:
+        print("Templated")
+    else:
+        if i == adafruit_fingerprint.IMAGEMESS:
+            print("Image too messy")
+        elif i == adafruit_fingerprint.FEATUREFAIL:
+            print("Could not identify features")
+        elif i == adafruit_fingerprint.INVALIDIMAGE:
+            print("Image invalid")
+        else:
+            print("Other error")
+        return False
+
+    print("Searching...", end="")
+    i = finger.finger_fast_search()
+    # pylint: disable=no-else-return
+    # This block needs to be refactored when it can be tested.
+    if i == adafruit_fingerprint.OK:
+        print("Found fingerprint!")
+        return True
+    else:
+        if i == adafruit_fingerprint.NOTFOUND:
+            print("No match found")
+        else:
+            print("Other error")
+        return False
+
+
+# pylint: disable=too-many-statements
+def enroll_finger(location):
+    """Take a 2 finger images and template it, then store in 'location'"""
+    for fingerimg in range(1, 3):
+        if fingerimg == 1:
+            print("Place finger on sensor...", end="")
+        else:
+            print("Place same finger again...", end="")
+
+        while True:
+            i = finger.get_image()
+            if i == adafruit_fingerprint.OK:
+                print("Image taken")
+                break
+            if i == adafruit_fingerprint.NOFINGER:
+                print(".", end="")
+            elif i == adafruit_fingerprint.IMAGEFAIL:
+                print("Imaging error")
+                return False
+            else:
+                print("Other error")
+                return False
+
+        print("Templating...", end="")
+        i = finger.image_2_tz(fingerimg)
+        if i == adafruit_fingerprint.OK:
+            print("Templated")
+        else:
+            if i == adafruit_fingerprint.IMAGEMESS:
+                print("Image too messy")
+            elif i == adafruit_fingerprint.FEATUREFAIL:
+                print("Could not identify features")
+            elif i == adafruit_fingerprint.INVALIDIMAGE:
+                print("Image invalid")
+            else:
+                print("Other error")
             return False
-        if i == 1:
-            print("انگشت خود را بردارید و دوباره قرار دهید...")
-            time.sleep(2)
 
-    if finger.create_model() != adafruit_fingerprint.OK:
-        print("خطا در ترکیب داده‌های اثر انگشت!")
+        if fingerimg == 1:
+            print("Remove finger")
+            time.sleep(1)
+            while i != adafruit_fingerprint.NOFINGER:
+                i = finger.get_image()
+
+    print("Creating model...", end="")
+    i = finger.create_model()
+    if i == adafruit_fingerprint.OK:
+        print("Created")
+    else:
+        if i == adafruit_fingerprint.ENROLLMISMATCH:
+            print("Prints did not match")
+        else:
+            print("Other error")
         return False
 
-    if finger.store_model(finger_id) != adafruit_fingerprint.OK:
-        print("خطا در ذخیره‌سازی اثر انگشت!")
+    print("Storing model #%d..." % location, end="")
+    i = finger.store_model(location)
+    if i == adafruit_fingerprint.OK:
+        print("Stored")
+    else:
+        if i == adafruit_fingerprint.BADLOCATION:
+            print("Bad storage location")
+        elif i == adafruit_fingerprint.FLASHERR:
+            print("Flash storage error")
+        else:
+            print("Other error")
         return False
 
-    print(f"اثر انگشت با موفقیت ثبت شد! ID: {finger_id}")
     return True
 
-# اجرای برنامه
-while True:
-    print("\n1: ثبت اثر انگشت")
-    print("2: شناسایی اثر انگشت")
-    print("3: خروج")
 
-    choice = input("انتخاب کنید: ")
+##################################################
+
+
+def get_num():
+    """Use input() to get a valid number from 1 to 127. Retry till success!"""
+    i = 0
+    while (i > 127) or (i < 1):
+        try:
+            i = int(input("Enter ID # from 1-127: "))
+        except ValueError:
+            pass
+    return i
+
+
+while True:
+    print("----------------")
+    if finger.read_templates() != adafruit_fingerprint.OK:
+        raise RuntimeError("Failed to read templates")
+    print("Fingerprint templates:", finger.templates)
+    print("e) enroll print")
+    print("f) find print")
+    print("d) delete print")
+    print("----------------")
+    c = input("> ")
+
+    if c == "e":
+        enroll_finger(get_num())
+    if c == "f":
+        if get_fingerprint():
+            print("Detected #", finger.finger_id, "with confidence", finger.confidence)
+        else:
+            print("Finger not found")
+    if c == "d":
+        if finger.delete_model(get_num()) == adafruit_fingerprint.OK:
+            print("Deleted!")
+        else:
+            print("Failed to delete")
     
-    if choice == "1":
-        enroll_fingerprint()
-    elif choice == "2":
-        get_fingerprint()
-    elif choice == "3":
-        break
-    else:
-        print("انتخاب نامعتبر! دوباره امتحان کنید.")
